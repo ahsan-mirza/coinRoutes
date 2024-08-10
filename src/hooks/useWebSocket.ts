@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 const COINBASE_WS_URL = 'wss://ws-feed.exchange.coinbase.com';
+const RECONNECT_INTERVAL = 5000; // Interval for reconnect attempts in milliseconds
 
 interface Order {
   price: string;
@@ -18,12 +19,11 @@ export const useWebSocket = (pair: string) => {
   const [orderBook, setOrderBook] = useState<OrderBook | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const createWebSocket = () => {
     socketRef.current = new WebSocket(COINBASE_WS_URL);
 
     socketRef.current.onopen = () => {
       console.log('WebSocket connected');
-      // Subscribe to ticker and order book channels
       const subscribeMessage = {
         type: 'subscribe',
         channels: [
@@ -41,27 +41,34 @@ export const useWebSocket = (pair: string) => {
     };
 
     socketRef.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      if (data.type === 'ticker' && data.product_id === pair) {
-        const bid = { price: data.best_bid, size: data.best_bid_size };
-        const ask = { price: data.best_ask, size: data.best_ask_size };
-        setTopOfBook({ bid, ask });
-      }
+      try {
+        const data = JSON.parse(event.data);
+        
 
-      if (data.type === 'l2update' && data.product_id === pair) {
-        const updatedBids = data.changes
-          .filter((change: any) => change[0] === 'buy')
-          .map((change: any) => ({ price: change[1], size: change[2] }));
+        if (data.type === 'ticker' && data.product_id === pair) {
         
-        const updatedAsks = data.changes
-          .filter((change: any) => change[0] === 'sell')
-          .map((change: any) => ({ price: change[1], size: change[2] }));
-        
-        setOrderBook((prevOrderBook) => ({
-          bids: [...(prevOrderBook?.bids || []), ...updatedBids],
-          asks: [...(prevOrderBook?.asks || []), ...updatedAsks],
-        }));
+          const bid = { price: data.best_bid, size: data.best_bid_size };
+          const ask = { price: data.best_ask, size: data.best_ask_size };
+          setTopOfBook({ bid, ask });
+        }
+
+        if (data.type === 'l2update' && data.product_id === pair) {
+          const updatedBids = data.changes
+            .filter((change: any) => change[0] === 'buy')
+            .map((change: any) => ({ price: change[1], size: change[2] }));
+          
+          const updatedAsks = data.changes
+            .filter((change: any) => change[0] === 'sell')
+            .map((change: any) => ({ price: change[1], size: change[2] }));
+          
+          setOrderBook((prevOrderBook) => ({
+            bids: [...(prevOrderBook?.bids || []), ...updatedBids],
+            asks: [...(prevOrderBook?.asks || []), ...updatedAsks],
+          }));
+        }
+      } catch (err) {
+        console.error('Error parsing WebSocket message:', err);
+        setError('Error parsing WebSocket message');
       }
     };
 
@@ -70,12 +77,19 @@ export const useWebSocket = (pair: string) => {
       setError('WebSocket error');
     };
 
-    socketRef.current.onclose = () => {
-      console.log('WebSocket disconnected');
+    socketRef.current.onclose = (event) => {
+      console.log('WebSocket closed:', event);
+      setError('WebSocket disconnected. Reconnecting...');
+      setTimeout(() => createWebSocket(), RECONNECT_INTERVAL);
     };
+  };
 
+  useEffect(() => {
+    createWebSocket();
     return () => {
-      socketRef.current?.close();
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
     };
   }, [pair]);
 

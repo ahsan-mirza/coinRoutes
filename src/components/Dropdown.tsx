@@ -9,8 +9,8 @@ const Dropdown: React.FC<DropdownProps> = ({ selectedPair, onSelectPair }) => {
   const pairs = ['BTC-USD', 'ETH-USD', 'LTC-USD', 'BCH-USD'];
 
   return (
-    <div className="mb-6">
-      <label htmlFor="pair" className="block text-sm font-semibold text-gray-800 mb-2">
+    <div className="mb-6 bg-gray-800 text-white p-4 rounded-md shadow-md">
+      <label htmlFor="pair" className="block text-sm font-semibold text-gray-800 mb-2 text-white">
         Select a Currency Pair
       </label>
       <div className="relative">
